@@ -1,4 +1,4 @@
-## 📌 **Branch Change Portal (MERN Stack Project)**
+## **Branch Change Portal (MERN Stack Project)**
 
 **Branch Change Portal** is a full-stack web application developed using the **MERN stack (MongoDB, Express.js, React.js, Node.js)** that automates the process of student branch change allocation in academic institutions.
 
@@ -12,8 +12,8 @@ Additionally, the platform includes features such as secure authentication using
 
 ---
 
-## 🚀 **Key Features**
+## **Key Features**
 
-* 🔐 Authentication & Authorization (JWT-based)
-* 👨‍🎓 Student Portal (Register, Login, Apply)
-* 🧠 Smart Allocation
+*  Authentication & Authorization (JWT-based)
+*  Student Portal (Register, Login, Apply)
+*  Smart Allocation
