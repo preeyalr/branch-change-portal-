@@ -11,7 +11,10 @@ const applicationSchema = new mongoose.Schema({
 
   // ✅ NEW FIELDS
   category: String,
-  previouslyAllotted: String,
+ previousAllottedCategory: {
+  type: String,
+  enum: ["General", "OBC", "SC", "ST"]
+},
   allocatedCategory: String, // 🔥 to track which seat category was used for allocation
   preferences: [String],
 

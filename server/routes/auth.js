@@ -6,33 +6,40 @@ const bcrypt = require("bcryptjs");
 
 const authMiddleware = require("../middleware/auth");
 
+
+// =========================
+// 👤 GET PROFILE (SELF)
+// =========================
 router.get("/profile", authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("-password");
-
     res.json(user);
-
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
+
+// =========================
+// 👤 GET PROFILE BY ID
+// =========================
 router.get("/profile/:id", async (req, res) => {
   try {
     const user = await User.findById(req.params.id).select("-password");
-
     res.json(user);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-// REGISTER (update with hashing)
-router.post("/register", async (req, res) => {
-  console.log("BODY:", req.body);
-  try {
-    const { enrollmentNo } = req.body;
 
-    // check existing user by enrollment
+
+// =========================
+// 📝 REGISTER
+// =========================
+router.post("/register", async (req, res) => {
+  try {
+    const { enrollmentNo, password } = req.body;
+
     const existingUser = await User.findOne({ enrollmentNo });
 
     if (existingUser) {
@@ -41,7 +48,7 @@ router.post("/register", async (req, res) => {
       });
     }
 
-    const hashedPassword = await bcrypt.hash(req.body.password, 10);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = new User({
       ...req.body,
@@ -58,7 +65,10 @@ router.post("/register", async (req, res) => {
   }
 });
 
-// LOGIN
+
+// =========================
+// 🔐 LOGIN (COOKIE BASED)
+// =========================
 router.post("/login", async (req, res) => {
   try {
     const { enrollmentNo, password } = req.body;
@@ -79,18 +89,37 @@ router.post("/login", async (req, res) => {
       });
     }
 
+    // 🔥 IMPORTANT FIX HERE
     const token = jwt.sign(
-      { id: user._id },
+      { id: user._id, role: user.role }, // ✅ ADD role
       "secretkey",
       { expiresIn: "1d" }
     );
 
-    res.json({ token, user });
+    // 🔥 SET COOKIE
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: false // true in production
+    });
+
+    res.json({ message: "Login successful" });
 
   } catch (err) {
     console.log(err);
     res.status(500).json({ error: err.message });
   }
 });
+
+// =========================
+// 🚪 LOGOUT
+// =========================
+router.post("/logout", (req, res) => {
+  res.clearCookie("token");
+
+  res.json({
+    message: "Logged out successfully"
+  });
+});
+
 
 module.exports = router;

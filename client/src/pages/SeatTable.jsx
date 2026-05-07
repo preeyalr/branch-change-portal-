@@ -26,7 +26,7 @@ const navigate = useNavigate();
   ← Home
 </button>
       <h1 className="text-3xl mb-6 text-center">
-        Seat Matrix 🪑
+        Seat Matrix 
       </h1>
 
       <div className="bg-white/10 p-6 rounded-xl">

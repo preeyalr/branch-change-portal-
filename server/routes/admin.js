@@ -4,10 +4,14 @@ const router = express.Router();
 const Application = require("../models/Application");
 const Seat = require("../models/Seat");
 const User = require("../models/User");
+
 const authMiddleware = require("../middleware/auth");
 const adminMiddleware = require("../middleware/admin");
 
-router.get("/seats",  async (req, res) => {
+
+// ✅ PROTECTED ROUTES (use cookies automatically)
+
+router.get("/seats", authMiddleware, async (req, res) => {
   try {
     const seats = await Seat.find();
     res.json(seats);
@@ -16,93 +20,114 @@ router.get("/seats",  async (req, res) => {
   }
 });
 
-router.post("/allocate", async (req, res) => {
-  // allocation logic here
 
+// 🔥 ONLY ADMIN SHOULD RUN ALLOCATION
+router.post("/allocate", authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    // 1️⃣ Get all applications sorted by CGPA (highest first)
     const applications = await Application.find({ status: "pending" })
       .sort({ cgpa: -1 });
 
+    let hasError = false;
+
     for (let app of applications) {
-      let allocated = false;
+      try {
+        let allocated = false;
 
-      // 2️⃣ Loop through preferences
-      for (let branch of app.preferences) {
+        for (let branch of app.preferences) {
+          const seat = await Seat.findOne({ branch });
+          if (!seat) continue;
 
-        const seat = await Seat.findOne({ branch });
+          const category = app.category;
 
-        if (!seat) continue;
+          const categoriesToCheck =
+            category === "General" ? ["General"] : [category, "General"];
 
-       const category = app.category;
+          for (let cat of categoriesToCheck) {
+            if (seat.seats[cat] && seat.seats[cat] > 0) {
 
-// 🔥 category priority
-let categoriesToCheck = [];
+              // ✅ allocate new seat
+              app.status = "approved";
+              app.allottedBranch = branch;
+              app.allocatedCategory = cat;
 
-if (category === "General") {
-  categoriesToCheck = ["General"];
-} else {
-  categoriesToCheck = [category, "General"];
-}
+              seat.seats[cat] -= 1;
 
-// 🔍 check seats in order
-for (let cat of categoriesToCheck) {
+              const user = await User.findById(app.studentId);
 
-  if (seat.seats[cat] && seat.seats[cat] > 0) {
+              if (!user) {
+                console.log("❌ User not found:", app.studentId);
+                continue;
+              }
 
-    // ✅ allocate
-    app.status = "approved";
-    app.allottedBranch = branch;
-    app.allocatedCategory = cat; // 🔥 store actual seat used
+              // 🔥 FREE OLD SEAT (ONLY ONCE)
+              if (user.currentBranch && user.currentBranch !== branch) {
 
-    // 🔥 reduce seat
-    seat.seats[cat] -= 1;
+                const oldSeat = await Seat.findOne({
+                  branch: user.currentBranch
+                });
 
-    // 🔥 free old seat
-    const user = await User.findById(app.studentId);
+                if (oldSeat && user) {
 
-    if (user && user.currentBranch && user.currentBranch !== branch) {
+                  const prevCategory = user.allocatedCategory || user.category;
 
-      const oldSeat = await Seat.findOne({
-        branch: user.currentBranch
-      });
+                  console.log("DEBUG:", {
+                    userId: user._id,
+                    oldBranch: user.currentBranch,
+                    prevCategory
+                  });
 
-      if (oldSeat) {
-        // 🔥 free using correct category
-        oldSeat.seats[user.allocatedCategory || user.category] += 1;
-        await oldSeat.save();
-      }
+                  if (
+                    prevCategory &&
+                    oldSeat.seats &&
+                    oldSeat.seats[prevCategory] !== undefined
+                  ) {
+                    oldSeat.seats[prevCategory] += 1;
+                    await oldSeat.save();
+                  } else {
+                    console.log("❌ Invalid prevCategory:", prevCategory);
+                  }
+                }
+              }
+                // 🔥 update user AFTER freeing seat
+                user.currentBranch = branch;
+                user.allocatedCategory = cat;
+                await user.save();
 
-      user.currentBranch = branch;
-      user.allocatedCategory = cat; // store new seat category
-      await user.save();
-    }
+                await seat.save();
+                await app.save();
 
-    await seat.save();
-    await app.save();
+                allocated = true;
+                break;
+              }
+            }
 
-    allocated = true;
-    break;
-  }
-}
+            if (allocated) break;
+          }
 
-        // ❌ If no branch allocated
-        if (!allocated) {
-          app.status = "rejected";
-          await app.save();
+          if (!allocated) {
+            app.status = "rejected";
+            await app.save();
+          }
+
+        } catch (err) {
+          console.log("❌ ERROR IN APPLICATION:", app._id, err.message);
+          hasError = true;
         }
       }
+
+    if (hasError) {
+        return res.status(500).json({
+          message: "Allocation completed with errors ❌"
+        });
+      }
+
+      res.json({ message: "Allocation completed 🎯" });
+
+    } catch (err) {
+      console.log("SERVER ERROR:", err);
+      res.status(500).json({ error: err.message });
     }
-
-    res.json({ message: "Allocation completed 🎯" });
-
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-
+  });
 
 router.get("/applications", async (req, res) => {
   try {
@@ -114,10 +139,7 @@ router.get("/applications", async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-}
-);
-
-
+});
 
 
 router.post("/seat", async (req, res) => {
@@ -126,7 +148,6 @@ router.post("/seat", async (req, res) => {
 
     let seat = await Seat.findOne({ branch });
 
-    // if branch not exists → create new
     if (!seat) {
       seat = new Seat({
         branch,
@@ -139,7 +160,6 @@ router.post("/seat", async (req, res) => {
       });
     }
 
-    // update seat count
     seat.seats[category] += Number(count);
 
     await seat.save();
